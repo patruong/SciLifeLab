@@ -223,5 +223,42 @@ def calcBetweenGroupsCovariance(variable1, variable2, groupvariable):
         cov_i = (mean_var1 - var1_Gmean) * (mean_var2 - var2_Gmean) * len_group_i
         cov_b += cov_i
     cov_b = cov_b / (num_unique_groups - 1)
-    return Covb
+    return cov_b
+
+"""
+var_wg = calcWithinGroupsVariance(X,y)
+var_bg = calcBetweenGroupsVariance(X,y)
+cov_wg = calcWithinGroupsCovariance(X,y)
+cov_bg = calcBetweenGroupsCovariance(X,y)
+"""
+
+
+IV = X.columns 
+
+var_wg = pd.DataFrame(columns = IV, index = ["var_wg"])
+for i in IV:
+    var_wg_i = calcWithinGroupsVariance(X[i], y)
+    var_wg[i] = var_wg_i
+
+var_bg = pd.DataFrame(columns = IV, index = ["var_bg"])
+for i in IV:
+    var_bg_i = calcBetweenGroupsVariance(X[i], y)
+    var_bg[i] = var_bg_i
+
+cov_wg = pd.DataFrame(columns = IV, index = IV) # eye is var_wg
+for i in IV:
+    for j in IV:
+        cov_wg_ij = calcWithinGroupsCovariance(X[i],X[j],y)
+        cov_wg[i][j] = cov_wg_ij
+
+cov_bg = pd.DataFrame(columns = IV, index = IV) # eye is var_bg
+for i in IV:
+    for j in IV:
+        cov_bg_ij = calcBetweenGroupsCovariance(X[i],X[j],y)
+        cov_bg[i][j] = cov_bg_ij
+        
+        
+var_wg["V2"]["var_wg"]+var_wg["V3"]["var_wg"]+var_bg["V2"]["var_bg"]+var_bg["V3"]["var_bg"]+cov_bg["V2"]["V3"]+cov_wg["V2"]["V3"]
+
+
 
