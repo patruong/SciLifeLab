@@ -29,6 +29,12 @@ from os import chdir
 from os import getcwd
 from IPython.display import display, HTML
 
+
+# To check distribution QQ-plot
+from scipy.stats import probplot
+from scipy import stats
+import pylab
+
 path = "C:\\Users\\Patrick\\Desktop\\Thesis In\\LukasK"
 
 chdir(path)
@@ -233,6 +239,10 @@ cov_bg = calcBetweenGroupsCovariance(X,y)
 """
 
 
+#############
+## MANOVA ##
+############
+
 IV = X.columns 
 
 var_wg = pd.DataFrame(columns = IV, index = ["var_wg"])
@@ -260,5 +270,386 @@ for i in IV:
         
 var_wg["V2"]["var_wg"]+var_wg["V3"]["var_wg"]+var_bg["V2"]["var_bg"]+var_bg["V3"]["var_bg"]+cov_bg["V2"]["V3"]+cov_wg["V2"]["V3"]
 
+"check for multinomial goodness of fit"
+"https://www.biostat.wisc.edu/~kbroman/teaching/labstat/fourth/notes02.pdf
+
+#######################################
+## MULTIVARIATE GAUSSIAN DISTRIBUTION #
+#######################################
+
+df_classes = df.V1
+df_unique = df_classes.value_counts()
+
+# Permute clonality and log FACS values
+def log_df(df, celltag_col = "V1"):
+    multiIndex = zip(df.index, df[celltag_col])
+    index = pd.MultiIndex.from_tuples(multiIndex)
+    index.names = ["cellTag", celltag_col]
+    df_m = pd.DataFrame(df.drop([celltag_col], axis = 1).values, index = index, columns = df.columns[1:])
+    
+    df_adjuster = df_m.min()
+    # adjust so that minimal value for each columns i 1 by adding the min + 1
+    df_newValues = df_m - df_adjuster + 1 
+    df_log = np.log(df_newValues)
+    return df_log
+
+# Permute clonality and log FACS values
+def permute_log_df(df, celltag_col = "V1"):
+    multiIndex = zip(df.index, np.random.permutation(df_permute[celltag_col]))
+    index = pd.MultiIndex.from_tuples(multiIndex)
+    index.names = ["cellTag", celltag_col]
+    df_m = pd.DataFrame(df.drop([celltag_col], axis = 1).values, index = index, columns = df.columns[1:])
+    
+    df_adjuster = df_m.min()
+    # adjust so that minimal value for each columns i 1 by adding the min + 1
+    df_newValues = df_m - df_adjuster + 1 
+    df_log = np.log(df_newValues)
+    return df_log
+
+
+###################################################################
+# DO I REALLY NEED TO SIMULATE THE VALUES TO COMPARE DIFFERNECE? ##
+###################################################################
+    
+# Function for return Multivariate normal distribution dataframe
+def MVN_pdf(df, clonality, clone_col = "V1", sample_size = 1000):
+    """
+    clonality => clonality strain e.g. "E4"
+    sample_size = samples to draw from MVN
+    """
+    
+    #df_log = log_df(df, clone_col)
+    df = df[df.index.get_level_values(clone_col) == clonality]
+    #means = pd.DataFrame(np.mean(df_log), columns = None)
+    #cov = pd.DataFrame(np.cov(df_log.transpose()), index = df_log.columns, columns = df_log.columns)
+    means = df.mean()
+    cov = df.cov()
+    samples = sample_size
+    multiVar_norm = np.random.multivariate_normal(means, cov, samples)
+    df_MVN = pd.DataFrame(multiVar_norm)
+    return df_MVN
+
+# Similarity between two matrices
+#https://math.stackexchange.com/questions/507742/distance-similarity-between-two-matrices
+
+def absolute_diff(X,Y):
+    absolute_diff = abs(X-Y)
+    res = absolute_diff.sum().sum()
+    return res
+
+def ss_diff(X,Y):
+    ss = np.power((X-Y),2)
+    ss_sqrt = np.sqrt(ss)
+    res = ss_sqrt.sum().sum()
+    return res
+
+def maximalValue_diff(X,Y):
+    abs_diff = abs(X-Y)
+    res = abs_diff.max().max()
+    return res
+
+
+#### TAKE A SUBSET
+df_log = log_df(df, "V1")
+
+#random vs random case
+def boot_random(clone, iterations = 100, sample_size = 1000, clone_col = "V1", standardize = True):
+    """
+    clone => clonality e.g. "E4"
+    """
+    diffs = pd.Series(index = range(iterations))
+    for i in range(iterations):
+        df_log = permute_log_df(df, clone_col)
+        df_perm = permute_log_df(df, clone_col)
+        
+        cGroup_MVN = MVN_pdf(df_log, clone, clone_col = clone_col, sample_size = sample_size)
+        pGroup_MVN = MVN_pdf(df_perm, clone, clone_col = clone_col, sample_size = sample_size)
+        
+        diff = ss_diff(cGroup_MVN, pGroup_MVN)
+        diffs[i] = diff
+    if standardize == True:
+        diffs = (diffs - diffs.mean())/diffs.std()
+    return diffs
+
+
+#random vs random case
+def boot_clone(clone, iterations = 100, sample_size = 1000, clone_col = "V1", standardize = True):
+    """
+    clone => clonality e.g. "E4"
+    """
+    df_log = log_df(df, clone_col)
+    diffs = pd.Series(index = range(iterations))
+    for i in range(iterations):
+
+        df_perm = permute_log_df(df, clone_col)
+        
+        cGroup_MVN = MVN_pdf(df_log, clone, clone_col = clone_col, sample_size = sample_size)
+        pGroup_MVN = MVN_pdf(df_perm, clone, clone_col = clone_col, sample_size = sample_size)
+        
+        diff = ss_diff(cGroup_MVN, pGroup_MVN)
+        diffs[i] = diff
+    if standardize == True:
+        diffs = (diffs - diffs.mean())/diffs.std()
+    return diffs
+
+
+baseline = boot_random("E4")
+permutation_test = boot_clone("E4")
+
+
+clone_col = "V1"
+clone = "E4"
+sample_size = 100
+
+df_log = permute_log_df(df, clone_col)
+df_perm = permute_log_df(df, clone_col)
+        
+cGroup_MVN = MVN_pdf(df_log, clone, clone_col = clone_col, sample_size = sample_size)
+pGroup_MVN = MVN_pdf(df_perm, clone, clone_col = clone_col, sample_size = sample_size)
+        
+cGroup_MVN = cGroup_MVN.transpose()
+pGroup_MVN = pGroup_MVN.transpose()
+
+# energy statistic - testing for equal distributions wikipedia
+
+def energyStatistic(X,Y):
+    """    
+    Input
+        rows - x,y values
+        columns - samples
+        
+    n = len(cGroup_MVN.columns)
+    m = len(pGroup_MVN.columns)
+    
+    A = 0
+    for i in cGroup_MVN:
+        for j in pGroup_MVN:
+            temp = abs(cGroup_MVN[i] - pGroup_MVN[j])
+            A += temp
+    A = A / (n*m)
+            
+    
+    B = 0 
+    for i in cGroup_MVN:
+        for j in cGroup_MVN:
+            temp = abs(cGroup_MVN[i] - cGroup_MVN[j])
+            B += temp
+    B = B / (n*n)
+    
+    C = 0
+    for i in pGroup_MVN:
+        for j in pGroup_MVN:
+            temp = abs(pGroup_MVN[i] - pGroup_MVN[j])
+            C += temp
+    C = C / (m*m)
+    
+    E = 2*A - B - C #if F is zero ==> same distribution of p and c
+    T = ((n*m)/(n+m))*F
+    """
+    n = len(X.columns)
+    m = len(Y.columns)
+    
+    A = 0
+    for i in X:
+        for j in Y:
+            temp = abs(X[i] - Y[j])
+            A += temp
+    A = A / (n*m)
+            
+    
+    B = 0 
+    for i in X:
+        for j in X:
+            temp = abs(X[i] - X[j])
+            B += temp
+    B = B / (n*n)
+    
+    C = 0
+    for i in Y:
+        for j in Y:
+            temp = abs(Y[i] - Y[j])
+            C += temp
+    C = C / (m*m)
+    
+    E = 2*A - B - C #if F is zero ==> same distribution of p and c
+    T = ((n*m)/(n+m))*F
+    return E, T
+
+
+
+clone_col = "V1"
+clones = df_unique.index
+sample_size = 100
+
+iterations = 10
+E_stats = pd.DataFrame(columns = clones, index = df.columns[1:])
+T_stats = pd.DataFrame(columns = clones, index = df.columns[1:])
+for j in range(iterations):
+    for i in clones:
+    
+        df_log = permute_log_df(df, clone_col)
+        df_perm = permute_log_df(df, clone_col)
+                
+        cGroup_MVN = MVN_pdf(df_log, clone, clone_col = clone_col, sample_size = sample_size)
+        pGroup_MVN = MVN_pdf(df_perm, clone, clone_col = clone_col, sample_size = sample_size)
+                
+        cGroup_MVN = cGroup_MVN.transpose()
+        pGroup_MVN = pGroup_MVN.transpose()
+        
+        E, T = energyStatistic(cGroup_MVN, pGroup_MVN)
+        E.index = df.columns[1:]
+        T.index = df.columns[1:]
+        
+        E_stats[i] = E
+        T_stats[i] = T
+    E_stats = E_stats + E_stats
+    T_stats = T_stats + T_stats
+E_stats = E_stats / iterations
+T_stats = T_stats / iterations    
+
+
+"""
+G "E4"
+not G
+
+draw many samples
+G "Permute"
+not G
+
+Compare how many
+
+G "E4" not G 
+is lower than 
+G "Permute" not G
+
+Look up more at Energy Distance?
+
+Look up P-value for permutation test
+Look up Permutation Statistics
+
+
+
+"""
+
+diff = ss_diff(cGroup_MVN, pGroup_MVN)
+diffs[i] = diff
+
+
+
+"""TEST CASES
+d1 = boot("E4")
+d2 = boot("F3")
+d3 = boot("A7")
+    
+d1.plot()
+d2.plot()
+d3.plot()  
+"""
+
+"""
+df_log = log_df(df, "V1")
+df_1 = df_log[df_log.index.get_level_values("V1") == "E4"]
+means = df_1.mean()
+cov = df_1.cov()
+samples = 1000
+multiVar_norm = np.random.multivariate_normal(means, cov, samples)
+df_MVN_1 = pd.DataFrame(multiVar_norm)
+
+df_perm = permute_log_df(df, "V1")
+df_2 = df_perm[df_perm.index.get_level_values("V1") == "E4"]
+means = df_2.mean()
+cov = df_2.cov()
+samples = 1000
+multiVar_norm = np.random.multivariate_normal(means, cov, samples)
+df_MVN_2 = pd.DataFrame(multiVar_norm)
+"""
+
+ss_diff(df_MVN_1, df_MVN_2)
+"""
+df_log[df_log.index.get_level_values("V1") == "F3"]
+#means = pd.DataFrame(np.mean(df_log), columns = None)
+#cov = pd.DataFrame(np.cov(df_log.transpose()), index = df_log.columns, columns = df_log.columns)
+means = df_log.mean()
+cov = df_log.cov()
+samples = 1000
+multiVar_norm = np.random.multivariate_normal(means, cov, samples)
+df_MVN_2 = pd.DataFrame(multiVar_norm)
+"""
+
+
+
+
+#fit multivariate normal distirbution to these parameters
+# perhaps enought to check difference between these parameters???
+
+
+#df_m[df_m.index.get_level_values("V1") == "F3"]
+
+
+
+#############################
+## MULTINOMIAL DISTRIBUTION #
+#############################
+
+df_classes = df.V1
+df_unique = df_classes.value_counts()
+df_probs = df_unique/df_unique.sum()
+
+#sampling procedure
+draws = np.random.multinomial(n=100, pvals=df_probs) #draw form each group
+df_draws = pd.Series(data = draws, index = df_unique.index)
+
+df_samples = pd.DataFrame(columns = df.columns)
+for i in range(len(df_draws)):
+    df_temp = df[df.V1 == df_draws.index[i]].sample(df_draws[i])
+    df_samples = df_samples.append(df_temp)
+    
+#check the distribution of gene expression
+
+#check distribution of V2 - RNA
+df.V2.mean()
+df.V2.std()
+
+#log the data
+
+df.drop(["V1"], axis = 1).min()
+#find all min smaller than 0
+
+df_adjuster = ((df.drop(["V1"], axis = 1).min()<0)*1)*df.drop(["V1"], axis = 1).min()
+
+# adjust so that minimal value for each columns i 1 by adding the min + 1
+df_newValues = (df.drop(["V1"], axis = 1) - df_adjuster +1 )
+
+df_logValues = np.log(df_newValues) #negative rexpressions?
+
+df_log = df_logValues.join(df.V1)
+#df_log = df_logValues[new_columns] # rearrange columns to new_columns
+
+
+#NOW DATA IS NORMALLY DISTRIBUTED!!
+
+
+
+### 
+#df[df.columns != "V2"]
+
+QQ = probplot(df_log.V3, dist=stats.norm, plot=pylab)
+
+def empirical_dist(series):
+    mean = series.mean()
+    std = np.sqrt(series.var())
+
+    plt.figure(figsize = (8,6)) 
+    h = sorted(series)
+    h = pd.DataFrame(h)
+    fit = stats.norm.pdf(h, mean, std)
+    
+    plt_label = "N(%.2f, %.2f)" % (mean, std)
+    plt.plot(h,fit, '-', label = plt_label)
+    plt.legend()
+    plt.hist(h, normed = True, bins = 100, label = "Empirical dist")#, plt.legend()
+    plt.title("Empirical and Fitted probability distribution functions")   
+    plt.ylabel("Probability")
+    plt.xlabel("log(FACS values)")
 
 
