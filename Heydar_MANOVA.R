@@ -6,22 +6,22 @@
 
 #IRIS EXAMPLE CODE
 
-# source("https://www.r-statistics.com/wp-content/uploads/2012/01/source_https.r.txt") # Making sure we can source code from github
-# source_https("https://raw.github.com/talgalili/R-code-snippets/master/clustergram.r")
-# data(iris)
-# library("dplyr")
-# #random sampling of iris-data set
-# set.seed(1234)
-# dplyr::sample_n(iris, 10)
-# 
-# sepl <- iris$Sepal.Length
-# petl <- iris$Petal.Length
-# 
-# # MANOVA test
-# res.man <- manova(cbind(Sepal.Length, Petal.Length) ~ Species, data = iris)
-# summary(res.man)
-# summary.aov(res.man)
-# 
+source("https://www.r-statistics.com/wp-content/uploads/2012/01/source_https.r.txt") # Making sure we can source code from github
+source_https("https://raw.github.com/talgalili/R-code-snippets/master/clustergram.r")
+data(iris)
+library("dplyr")
+
+#random sampling of iris-data set
+set.seed(1234)
+dplyr::sample_n(iris, 10)
+sepl <- iris$Sepal.Length
+petl <- iris$Petal.Length
+
+# MANOVA test
+res.man <- manova(cbind(Sepal.Length, Petal.Length) ~ Species, data = iris)
+summary(res.man)
+summary.aov(res.man)
+
 
 
 
@@ -36,11 +36,15 @@ df <- read.csv("P1902_V.csv", header = TRUE, row.names = 1)
 # MANOVA test
 
 res.man <- manova(cbind(V2, V3, V4, V5, V6, V7, V8, V9, V10, V11) ~ V1, data = df)
-summary(res.man)
 summary(res.man, test = "Pillai")
 summary(res.man, test = "Wilks")
 summary(res.man, test = "Hotelling-Lawley")
 summary(res.man, test = "Roy")
 
 summary.aov(res.man)
+
+"CHECK assumptions and code
+http://www.real-statistics.com/multivariate-statistics/multivariate-analysis-of-variance-manova/manova-basic-concepts/
+http://userwww.sfsu.edu/efc/classes/biol710/manova/manovanewest.htm
+"
 
