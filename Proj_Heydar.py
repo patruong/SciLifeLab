@@ -292,7 +292,7 @@ def log_df(df, celltag_col = "V1"):
     df_newValues = df_m - df_adjuster + 1 
     df_log = np.log(df_newValues)
     return df_log
-
+    
 # Permute clonality and log FACS values
 def permute_log_df(df, celltag_col = "V1"):
     multiIndex = zip(df.index, np.random.permutation(df_permute[celltag_col]))
@@ -307,6 +307,9 @@ def permute_log_df(df, celltag_col = "V1"):
     return df_log
 
 
+
+
+
 ###################################################################
 # DO I REALLY NEED TO SIMULATE THE VALUES TO COMPARE DIFFERNECE? ##
 ###################################################################
@@ -314,6 +317,8 @@ def permute_log_df(df, celltag_col = "V1"):
 # Function for return Multivariate normal distribution dataframe
 def MVN_pdf(df, clonality, clone_col = "V1", sample_size = 1000):
     """
+    Input should be multiIndex df from log_df or permute_log_df
+    
     clonality => clonality strain e.g. "E4"
     sample_size = samples to draw from MVN
     """
@@ -329,6 +334,62 @@ def MVN_pdf(df, clonality, clone_col = "V1", sample_size = 1000):
     df_MVN = pd.DataFrame(multiVar_norm)
     return df_MVN
 
+clonality = "E4"
+clone_col = "V1"
+sample_size = 1000
+
+"""
+Input should be multiIndex df form log_df or permute_log_df
+
+clonality ==> clonality strain e.g. "E4"
+sample_size = samples to draw from MVN
+
+Output
+
+"""
+    df_mvn = df_log[df_log.index.get_level_values(clone_col) == clonality]
+    df_mvn_complement = df_log[df_log.index.get_level_values(clone_col) != clonality]
+
+    #means = pd.DataFrame(np.mean(df_log), columns = None)
+    #cov = pd.DataFrame(np.cov(df_log.transpose()), index = df_log.columns, columns = df_log.columns)
+    means = df_mvn.mean()
+    cov = df_mvn.cov()
+    
+    #calculate same mena + cov for complement
+    samples = sample_size
+    multiVar_norm = np.random.multivariate_normal(means, cov, samples)
+    df_MVN = pd.DataFrame(multiVar_norm)
+
+"""
+Challenge is to find a test for multivariate distribution equality
+"""
+    
+e_stat_list = []
+iterations = 10
+ 
+df_log = log_df(df)
+df_mvn = df_log[df_log.index.get_level_values(clone_col) == clonality]
+df_mvn_complement = df_log[df_log.index.get_level_values(clone_col) != clonality]
+
+X = df_mvn.transpose()
+Y = df_mvn_complement.transpose()
+E_orig,T_orig = energyStatistic(X,Y)
+
+for i in range(iterations):
+    df_log = permute_log_df(df)
+    df_mvn = df_log[df_log.index.get_level_values(clone_col) == clonality]
+    df_mvn_complement = df_log[df_log.index.get_level_values(clone_col) != clonality]
+    X = df_mvn.transpose()
+    Y = df_mvn_complement.transpose()
+    E,T = energyStatistic(X,Y)
+    e_stat_list.append(E)
+    
+#E_df = pd.DataFrame(E_orig)
+E_df = pd.DataFrame([E_orig for i in range(len(e_stat_list))])
+E_perm_df = pd.DataFrame(e_stat_list)
+
+boolean_table = (E_df-E_perm_df).transpose()>0
+1-boolean_table.transpose().sum()/boolean_table.transpose().count()
 # Similarity between two matrices
 #https://math.stackexchange.com/questions/507742/distance-similarity-between-two-matrices
 
@@ -449,7 +510,9 @@ def energyStatistic(X,Y):
     n = len(X.columns)
     m = len(Y.columns)
     
-    A = 0
+    #n = len(X.index)
+    #m = len(Y.index)
+    
     for i in X:
         for j in Y:
             temp = abs(X[i] - Y[j])
@@ -508,6 +571,8 @@ E_stats = E_stats / iterations
 T_stats = T_stats / iterations    
 
 
+
+
 """
 G "E4"
 not G
@@ -528,7 +593,9 @@ Look up P-value for permutation test
 Look up Permutation Statistics
 
 
-
+ToDO:
+    
+    Make a new _MVN for not G
 """
 
 diff = ss_diff(cGroup_MVN, pGroup_MVN)
@@ -634,8 +701,10 @@ df_log = df_logValues.join(df.V1)
 #df[df.columns != "V2"]
 
 QQ = probplot(df_log.V3, dist=stats.norm, plot=pylab)
+QQ = probplot(df.V3, dist=stats.norm, plot=pylab)
 
-def empirical_dist(series):
+def empirical_dist(series, title = "Empirical and Fitted probability distribution functions",
+                   xlabel = "FACS values"):
     mean = series.mean()
     std = np.sqrt(series.var())
 
@@ -647,9 +716,9 @@ def empirical_dist(series):
     plt_label = "N(%.2f, %.2f)" % (mean, std)
     plt.plot(h,fit, '-', label = plt_label)
     plt.legend()
-    plt.hist(h, normed = True, bins = 100, label = "Empirical dist")#, plt.legend()
-    plt.title("Empirical and Fitted probability distribution functions")   
+    plt.hist(h, normed = True, bins = 25, label = "Empirical dist")#, plt.legend()
+    plt.title(title)   
     plt.ylabel("Probability")
-    plt.xlabel("log(FACS values)")
+    plt.xlabel(xlabel)
 
 
