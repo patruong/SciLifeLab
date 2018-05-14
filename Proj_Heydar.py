@@ -13,6 +13,7 @@ from matplotlib.pyplot import scatter
 import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
+import scipy as sp
 
 from sklearn.preprocessing import scale
 from sklearn.decomposition import PCA
@@ -295,7 +296,7 @@ def log_df(df, celltag_col = "V1"):
     
 # Permute clonality and log FACS values
 def permute_log_df(df, celltag_col = "V1"):
-    multiIndex = zip(df.index, np.random.permutation(df_permute[celltag_col]))
+    multiIndex = zip(df.index, np.random.permutation(df[celltag_col]))
     index = pd.MultiIndex.from_tuples(multiIndex)
     index.names = ["cellTag", celltag_col]
     df_m = pd.DataFrame(df.drop([celltag_col], axis = 1).values, index = index, columns = df.columns[1:])
@@ -347,6 +348,7 @@ sample_size = samples to draw from MVN
 Output
 
 """
+df_log = log_df(df, celltag_col = "V1")
     df_mvn = df_log[df_log.index.get_level_values(clone_col) == clonality]
     df_mvn_complement = df_log[df_log.index.get_level_values(clone_col) != clonality]
 
@@ -364,23 +366,27 @@ Output
 Challenge is to find a test for multivariate distribution equality
 """
     
-e_stat_list = []
-iterations = 10
- 
 df_log = log_df(df)
 df_mvn = df_log[df_log.index.get_level_values(clone_col) == clonality]
 df_mvn_complement = df_log[df_log.index.get_level_values(clone_col) != clonality]
 
 X = df_mvn.transpose()
+X = X.T
 Y = df_mvn_complement.transpose()
+Y = Y.T
+
 E_orig,T_orig = energyStatistic(X,Y)
 
+
+e_stat_list = []
+iterations = 10
+ 
 for i in range(iterations):
     df_log = permute_log_df(df)
     df_mvn = df_log[df_log.index.get_level_values(clone_col) == clonality]
     df_mvn_complement = df_log[df_log.index.get_level_values(clone_col) != clonality]
-    X = df_mvn.transpose()
-    Y = df_mvn_complement.transpose()
+    X = df_mvn#.transpose()
+    Y = df_mvn_complement#.transpose()
     E,T = energyStatistic(X,Y)
     e_stat_list.append(E)
     
@@ -471,13 +477,124 @@ pGroup_MVN = MVN_pdf(df_perm, clone, clone_col = clone_col, sample_size = sample
 cGroup_MVN = cGroup_MVN.transpose()
 pGroup_MVN = pGroup_MVN.transpose()
 
-# energy statistic - testing for equal distributions wikipedia
+# Norm functions
+def absoluteNorm(X):
+    """
+    Takes a vector and calculates the absolute norm
+    
+    if X = U - V, then we have the absolute distance between U and V.
+    """"
+    absNorm = abs(X)
+    return absNorm
 
-def energyStatistic(X,Y):
+def euclideanNorm(X):
+    """
+    Takes a vector and calculates the Euclidean norm
+    
+    if X = U - V, then euclideanNorm is the Euclidean distance between U and V
+    """
+    
+    squaredVec = np.square(X)
+    sumVec = np.sum(squaredVec)
+    eucNorm = np.sqrt(sumVec)
+    return eucNorm
+
+def mahalanobisNorm(X, Y):
+    """
+    Takes one vector and calculates the Mahalanobis distance of it OR
+    takes two random vectors of the same distribution and calculates the 
+    Mahalanobis dissimilarity between them.
+    
+    Note vectors should be in matrix notation np.array[[]], because 
+    we need to transpose multiplicate.
+    
+    X,Y - should be verticle vector / verticle multi-dim vector.
+    
+    Notice: numpy transpose operations are reversed
+    """
+    if X.ndim != 2:
+        error_dim = X.ndim
+        raise ValueError("Vector ndim must be 2. Vector ndim is "+str(error_dim)+
+                             ". Check with np.array().ndim. X vector Error.")
+    elif Y.ndim != 2:
+        error_dim = Y.dim
+        raise ValueError("Vector ndim must be 2. Vector ndim is "+str(error_dim)+
+                             ". Check with np.array().ndim. Y vector Error.")
+        
+    e = (X-Y)
+    v_stacked = np.vstack([X,Y])
+    cov = np.cov(v_stacked.transpose())
+    inv_cov = np.linalg.inv(cov)
+    D = np.sqrt(np.sum(np.dot(e,inv_cov)*e, axis = 1))
+    
+    e = (Y-X)
+    v_stacked = np.vstack([Y,X])
+    cov = np.cov(v_stacked.transpose())
+    inv_cov = np.linalg.inv(cov)
+    D = np.sqrt(np.sum(np.dot(e,inv_cov)*e, axis = 1))
+    D= np.dot(e,inv_cov)*e
+    
+    #http://mccormickml.com/2014/07/21/mahalanobis-distance/
+    
+    e = (X-Y)
+    mu = np.mean(e, axis = 1)
+    cov = np.dot((e.T - mu).T,(e.T - mu))/(e.T.shape[0]-1)
+    inv_cov = np.linalg.inv(cov)
+    D = np.sum(np.dot(e.T, inv_cov)*e.T, axis = 1)
+    
+    #Mahalanobis tutorial
+    #http://people.revoledu.com/kardi/tutorial/Similarity/MahalanobisDistance.html    
+    
+    return D
+
+def mahalanobisDistance(g1, g2, axis = 0):
+    """
+    Computes the Mahalanobis distance between two vectors.
+    
+    input format should be:
+        g1 - vector with features in column and samples in row
+        g2 == g1
+        
+    """
+    if axis == 1:
+        g1 = g1.T
+        g2 = g2.T
+    g1_mu = np.mean(g1, axis = 0)
+    g2_mu = np.mean(g2, axis = 0)
+    
+    g1_centered = g1-g1_mu
+    g2_centered = g2-g2_mu
+    
+    g1_cov = np.cov(g1_centered.T, bias = True)
+    g2_cov = np.cov(g2_centered.T, bias = True)
+    
+    g1_w = (float(g1.shape[0])/(float(g1.shape[0])+float(g2.shape[0])))
+    g2_w = (float(g2.shape[0])/(float(g1.shape[0])+float(g2.shape[0])))
+    
+    pooled_cov = (g1_w*g1_cov)+(g2_w*g2_cov)
+    try:
+        inv_cov = np.linalg.inv(pooled_cov)
+    except:
+        inv_cov = 1/pooled_cov
+    mean_diff = np.array([g1_mu-g2_mu])
+    
+    mahalanobis = np.sqrt(np.dot(np.dot(mean_diff, inv_cov), mean_diff.T))
+    return mahalanobis
+
+
+
+# energy statistic - testing for equal distributions wikipedia
+'''
+def energyStatistic(X,Y, distance_function = euclideanNorm):
     """    
     Input
-        rows - x,y values
-        columns - samples
+        X,Y - two vectors or matrices
+        
+            columns - x,y values
+            rows - samples
+        
+        distance_function - norm function to use
+        
         
     n = len(cGroup_MVN.columns)
     m = len(pGroup_MVN.columns)
@@ -507,35 +624,102 @@ def energyStatistic(X,Y):
     E = 2*A - B - C #if F is zero ==> same distribution of p and c
     T = ((n*m)/(n+m))*F
     """
+    X = X.transpose()
+    Y = Y.transpose()
+    
     n = len(X.columns)
     m = len(Y.columns)
     
     #n = len(X.index)
     #m = len(Y.index)
+    A = 0
     
     for i in X:
         for j in Y:
-            temp = abs(X[i] - Y[j])
-            A += temp
+            diff = X[i] - Y[j]
+            dist = distance_function(diff)
+            A += dist
     A = A / (n*m)
             
     
     B = 0 
     for i in X:
         for j in X:
-            temp = abs(X[i] - X[j])
-            B += temp
+            diff = X[i] - X[j]
+            dist = distance_function(diff)
+            B += dist
     B = B / (n*n)
     
     C = 0
     for i in Y:
         for j in Y:
-            temp = abs(Y[i] - Y[j])
-            C += temp
+            diff = Y[i] - Y[j]
+            dist = distance_function(diff)
+            C += dist
     C = C / (m*m)
     
     E = 2*A - B - C #if F is zero ==> same distribution of p and c
-    T = ((n*m)/(n+m))*F
+    T = ((n*m)/(n+m))*E
+    return E, T
+'''
+
+def energyStatistic(X,Y, distance_function = mahalanobisDistance):
+    """    
+    Input
+        X,Y - two vectors or matrices
+        
+            columns - x,y values
+            rows - samples
+        
+        distance_function - norm function to use
+        
+    """
+    X = X.transpose()
+    Y = Y.transpose()
+    
+    print("We want index to be features V2...V11")
+    print("Printing index")
+    print(X.index)
+    
+    n = len(X.columns)
+    m = len(Y.columns)
+    
+    #n = len(X.index)
+    #m = len(Y.index)
+    A = 0
+    
+    for i in X:
+        for j in Y:
+            #diff = X[i] - Y[j]
+            X_i = np.array([X[i].values]).T
+            Y_j = np.array([Y[j].values]).T
+            dist = distance_function(X_i, Y_j)
+            A += dist
+    A = A / (n*m)
+            
+    
+    B = 0 
+    for i in X:
+        for j in X:
+            #diff = X[i] - X[j]
+            X_i = np.array([X[i].values]).T
+            X_j = np.array([X[j].values]).T
+            dist = distance_function(X_i, X_j)
+            B += dist
+    B = B / (n*n)
+    
+    C = 0
+    for i in Y:
+        for j in Y:
+            #diff = Y[i] - Y[j]
+            X_i = np.array([Y[i].values]).T
+            Y_j = np.array([Y[j].values]).T
+            dist = distance_function(Y[i], Y[j])
+            C += dist
+    C = C / (m*m)
+    
+    E = 2*A - B - C #if F is zero ==> same distribution of p and c
+    T = ((n*m)/(n+m))*E
     return E, T
 
 
@@ -595,8 +779,110 @@ Look up Permutation Statistics
 
 ToDO:
     
-    Make a new _MVN for not G
+    Implement
+    - Bhattacharyya Distance
+    - Hellinger Distance
+    - Kullback-Leibler Divergence
 """
+
+############################
+## BHATTACHARYYA DISTANCE ##
+############################
+
+# https://stats.stackexchange.com/questions/296361/intuition-of-the-bhattacharya-coefficient-and-the-bhattacharya-distance
+# https://en.wikipedia.org/wiki/Bhattacharyya_distance
+# Bhattacharyya distance generalizes the Mahalanobis distance
+# Mahalanobis ditsance ==> same covariance matrix
+
+X = np.random.multivariate_normal([0,0], [[1,0],[0,1]], 10)
+Y = np.random.multivariate_normal([2,5], [[5,2],[2,7]], 15)
+
+def BhattacharyyaDistance(X,Y, axis = 0, weighted_cov = False):
+    """
+    input:
+            columns - features
+            rows - samples
+    """
+    if axis == 1:
+        X = X.T
+        Y = Y.T
+        
+    X_mu = np.mean(X, axis = 0)
+    Y_mu = np.mean(Y, axis = 0)
+    
+    X_cov = np.cov(X.T, bias = True)
+    Y_cov = np.cov(Y.T, bias = True)
+    
+    #weighted_cov = False
+    if weighted_cov == True:
+        X_w = (float(X.shape[0])/(float(X.shape[0])+float(Y.shape[0])))
+        Y_w = (float(Y.shape[0])/(float(X.shape[0])+float(Y.shape[0])))
+        pooled_cov = (X_w*X_cov)+(Y_w*Y_cov)
+    else:
+        pooled_cov = (X_cov + Y_cov)/2
+    
+    inv_cov = np.linalg.inv(pooled_cov)
+    
+    pooled_det = np.linalg.det(pooled_cov)
+    X_det = np.linalg.det(X_cov)
+    Y_det = np.linalg.det(Y_cov)
+    
+    comp1 = (float(1)/float(8))*np.dot(np.dot(np.array([(X_mu - Y_mu)]), inv_cov), 
+             np.array([(X_mu - Y_mu)]).T)
+    comp2 = (float(1)/float(2))*np.log(pooled_det / np.sqrt(np.dot(X_det, Y_det)))
+    
+    bhattacharyya = comp1 + comp2
+    
+    return bhattacharyya
+##### END BHATTACHARYYA #####
+
+########################
+## HELLINGER DISTANCE ##
+########################
+    
+X = np.random.multivariate_normal([0,0], [[1,0],[0,1]], 10)
+Y = np.random.multivariate_normal([2,5], [[5,2],[2,7]], 15)
+
+def HellingerDistance(X,Y, axis = 0, weighted_cov = False):
+    """
+    input:
+            columns - features
+            rows - samples
+    """
+    if axis == 1:
+        X = X.T
+        Y = Y.T
+    
+    X_mu = np.mean(X, axis = 0)
+    Y_mu = np.mean(Y, axis = 0)
+    
+    X_cov = np.cov(X.T, bias = True)
+    Y_cov = np.cov(Y.T, bias = True)
+    
+    #weighted_cov = False
+    if weighted_cov == True:
+        X_w = (float(X.shape[0])/(float(X.shape[0])+float(Y.shape[0])))
+        Y_w = (float(Y.shape[0])/(float(X.shape[0])+float(Y.shape[0])))
+        pooled_cov = (X_w*X_cov)+(Y_w*Y_cov)
+    else:
+        pooled_cov = (X_cov + Y_cov)/2
+    
+    inv_cov = np.linalg.inv(pooled_cov)
+    
+    comp1 = np.divide(np.dot(np.power(np.linalg.det(X_cov),float(1)/float(4)), 
+                             np.power(np.linalg.det(Y_cov),float(1)/float(4))),
+            np.power(np.linalg.det(pooled_cov), float(1)/float(2)))
+            
+    comp2 = np.exp(-(float(1)/float(8))*np.dot(np.dot(np.array([(X_mu - Y_mu)]), inv_cov), 
+                     np.array([(X_mu - Y_mu)]).T))  
+    
+    hellinger = 1 - comp1*comp2 
+
+    return hellinger
+
+#### END HELLINGER #####
+
+
 
 diff = ss_diff(cGroup_MVN, pGroup_MVN)
 diffs[i] = diff
@@ -703,7 +989,7 @@ df_log = df_logValues.join(df.V1)
 QQ = probplot(df_log.V3, dist=stats.norm, plot=pylab)
 QQ = probplot(df.V3, dist=stats.norm, plot=pylab)
 
-def empirical_dist(series, title = "Empirical and Fitted probability distribution functions",
+def empirical_dist(series, bins = 100, title = "Empirical and Fitted probability distribution functions",
                    xlabel = "FACS values"):
     mean = series.mean()
     std = np.sqrt(series.var())
@@ -716,7 +1002,7 @@ def empirical_dist(series, title = "Empirical and Fitted probability distributio
     plt_label = "N(%.2f, %.2f)" % (mean, std)
     plt.plot(h,fit, '-', label = plt_label)
     plt.legend()
-    plt.hist(h, normed = True, bins = 25, label = "Empirical dist")#, plt.legend()
+    plt.hist(h, normed = True, bins = bins, label = "Empirical dist")#, plt.legend()
     plt.title(title)   
     plt.ylabel("Probability")
     plt.xlabel(xlabel)
