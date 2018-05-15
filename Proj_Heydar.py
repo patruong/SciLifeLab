@@ -728,7 +728,7 @@ clone_col = "V1"
 clones = df_unique.index
 sample_size = 100
 
-iterations = 10
+iterations = 3
 E_stats = pd.DataFrame(columns = clones, index = df.columns[1:])
 T_stats = pd.DataFrame(columns = clones, index = df.columns[1:])
 for j in range(iterations):
@@ -785,6 +785,7 @@ ToDO:
     - Kullback-Leibler Divergence
 """
 
+
 ############################
 ## BHATTACHARYYA DISTANCE ##
 ############################
@@ -794,8 +795,11 @@ ToDO:
 # Bhattacharyya distance generalizes the Mahalanobis distance
 # Mahalanobis ditsance ==> same covariance matrix
 
-X = np.random.multivariate_normal([0,0], [[1,0],[0,1]], 10)
+X = np.random.multivariate_normal([0,0], [[1,0],[0,1]], 1000)
+X2 = np.random.multivariate_normal([0,0], [[1,0],[0,1]], 100)
 Y = np.random.multivariate_normal([2,5], [[5,2],[2,7]], 15)
+
+#P-value for Bhattacharyya and Hellinger distance = 1/max(sample_size_1, sample_size_2)
 
 def BhattacharyyaDistance(X,Y, axis = 0, weighted_cov = False):
     """
@@ -883,6 +887,8 @@ def HellingerDistance(X,Y, axis = 0, weighted_cov = False):
 #### END HELLINGER #####
 
 
+
+#######################
 
 diff = ss_diff(cGroup_MVN, pGroup_MVN)
 diffs[i] = diff
