@@ -47,7 +47,10 @@ def mahalanobisDistance(g1, g2, axis = 0):
     g2_w = (float(g2.shape[0])/(float(g1.shape[0])+float(g2.shape[0])))
     
     pooled_cov = (g1_w*g1_cov)+(g2_w*g2_cov)
-    inv_cov = np.linalg.inv(pooled_cov)
+    try:
+        inv_cov = np.linalg.inv(pooled_cov)
+    except:
+        inv_cov = 1/pooled_cov
     mean_diff = np.array([g1_mu-g2_mu])
     
     mahalanobis = np.sqrt(np.dot(np.dot(mean_diff, inv_cov), mean_diff.T))
